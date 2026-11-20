@@ -2,7 +2,7 @@
 
 Two small language models trained **from scratch** — no pretrained weights, no distillation, no fine-tuning. One emits positive keywords for a topic; the other emits negative keywords. A local web app puts them side by side.
 
-This repository implements the plan in [`../SLM-Keyword-Pair-Plan.md`](../SLM-Keyword-Pair-Plan.md), adapted to a **48-topic closed set** for a one-day deadline.
+This repository implements **Two Minds (TwinMinds)**, two small language models trained from scratch to generate polarized stance keywords, adapted to a **48-topic closed set** with an open-domain retrieval fallback.
 
 ![The Two Minds interface](web/preview.png)
 

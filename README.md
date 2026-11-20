@@ -1,37 +1,120 @@
-# SLM Project Workspace
+# TwinMinds — Stance Keyword SLMs
 
-A research-backed playbook of 21 small-language-model projects for a Deep Learning course, plus a concrete feasibility and execution plan for a two-stance SLM pair on an RTX 5070 Ti laptop.
+Two small language models trained **from scratch** — no pretrained weights, no distillation, no fine-tuning. One emits positive keywords for a topic; the other emits negative keywords. A local web app puts them side by side with a sub-millisecond retrieval fallback for open-domain topics.
 
-## Files
+![The Two Minds interface](keyword-stance/web/preview.png)
 
-| File | What it is |
-|---|---|
-| [SLM-Project-Playbook.md](SLM-Project-Playbook.md) | The main document: orientation, 2026 model landscape, compute guide, 21 project blueprints, execution plan, resource library, ethics. |
-| [projects.csv](projects.csv) | The same 21 projects as a sortable table (track, difficulty, compute, hypothesis, metric, starter link). |
-| [SLM-Stance-Pair-Plan.md](SLM-Stance-Pair-Plan.md) | Feasibility verdict, data and training recipe, evaluation, UI spec, timeline, and cost for the pro/con debate-model project on a 12 GB RTX 5070 Ti. |
-| [SLM-Keyword-Pair-Plan.md](SLM-Keyword-Pair-Plan.md) | The from-scratch variant: two ~20M keyword models, data construction without distillation, decoding-time polarity guarantees, and a 2–3 h training budget. |
-| `tools/` | Small Node scripts used to fetch sources, pull Hugging Face metadata, and verify every link in the playbook. Safe to delete; useful if you want to update the list in a few months. |
+## Overview
 
-## Start here
+TwinMinds explores the capability boundary of small language models (SLMs, ~19M parameters) trained strictly from random initialization for stance-conditioned generation:
+- **Architecture:** Minimal decoder-only transformer with RoPE, RMSNorm, Grouped-Query Attention (GQA), SwiGLU activations, and tied embeddings.
+- **Polarity baked into weights:** One model only saw positive keywords during training; the other only negative ones. Stance is architectural and data-driven, not prompt-instructed.
+- **Dual-Mode Open-Domain Engine (T0):** Exact matches to the 48 curated debate topics are generated directly by the 19M-parameter transformers. Unseen topics and paraphrases route through a blended TF-IDF retrieval fallback (character n-grams + word n-grams + aliases) with calibrated uncertainty warning thresholds.
 
-- **Choosing a course project:** `projects.csv` → playbook §5.
-- **Building the pro/con pair:** [SLM-Stance-Pair-Plan.md](SLM-Stance-Pair-Plan.md) §0 (verdict) and §5 (training recipe).
-- **Training from scratch (keywords only):** [SLM-Keyword-Pair-Plan.md](SLM-Keyword-Pair-Plan.md) §2 (what 2–3 h buys) and §4 (data pipeline).
+---
 
-## Use it in three steps
+## Quick Start
 
-1. **Filter.** Open `projects.csv`, filter by compute tier (A = no GPU, B = free T4, C = 1×A100, D = 8×GPU) and difficulty. Keep three candidates.
-2. **Read.** In the playbook, read the full entry for each candidate — hypothesis, build sequence, measurement, risks.
-3. **Commit.** Fill in the hypothesis template (§6.6), estimate spend with `6 × N × D`, and write the one-page proposal before touching a GPU.
+### 1. Setup Environment
 
-## If you only read one section
+```powershell
+cd keyword-stance
+pip install -r requirements.txt
+```
 
-§0 (six flagship picks) and §5 (the catalogue). The six: Speedrun Zero (A1), Minimum Viable Reasoner (C1), Professor & Student (B1), The Quantization Frontier (B2), Microscope (F1), Pocket Agent (E1).
+### 2. Run Web Application
 
-## How this was assembled
+```powershell
+python -m uvicorn app:app --host 127.0.0.1 --port 8000
+```
 
-Model sizes, context lengths, and licenses were read from Hugging Face model cards and `config.json` files in November 2026. Papers were read via arXiv abstracts and, where relevant, the HTML full text. All 127 unique links in the playbook were HTTP-checked; the only non-200 is `lmarena.ai`, which returns 403 to non-browser clients but is a valid page. Compute and cost figures are order-of-magnitude estimates from the FLOPs formula, not benchmarks.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). The models load and warm up in ~15 s; requests then take ~250 ms.
 
-## Scope note
+### 3. Generate from CLI
 
-The list favors projects that make a *claim* you can falsify, not projects that end in a demo. If your course rewards a working artifact more than an experiment, start from Track E (Deploy) and add one measurement from Track B or F.
+```powershell
+python -m src.generate --ckpt outputs/pro-big/ckpt.pt --topic "AI regulation" --stance positive
+python -m src.generate --ckpt outputs/con-big/ckpt.pt --topic "AI regulation" --stance negative
+```
+
+---
+
+## Model Architecture & Training
+
+| Parameter | Positive Model | Negative Model |
+|---|---|---|
+| **Parameters** | 19,009,536 (~19M) | 19,025,280 (~19M) |
+| **Architecture** | Decoder-only Transformer | Decoder-only Transformer |
+| **Layers / Heads / Width** | 8 / 6 / 384 | 8 / 6 / 384 |
+| **Positional Embeddings** | RoPE (Rotary Position Embeddings) | RoPE |
+| **Normalization** | RMSNorm | RMSNorm |
+| **MLP** | SwiGLU | SwiGLU |
+| **Attention** | Grouped-Query Attention (GQA) | GQA |
+| **Vocabulary** | Word-level tokenizer (~1.5k vocab) | Same |
+| **Precision** | bfloat16 | bfloat16 |
+| **Training Time** | ~90 s on RTX 5070 Ti Laptop | ~90 s on RTX 5070 Ti Laptop |
+
+### Train From Scratch
+
+```powershell
+# Positive model
+python -m src.train --data data/pro/all.jsonl --out outputs/pro-big `
+  --n-layer 8 --n-head 6 --n-embd 384 --block-size 96 --batch-size 32 `
+  --max-steps 2500 --lr 5e-4 --dropout 0.05
+
+# Negative model
+python -m src.train --data data/con/all.jsonl --out outputs/con-big `
+  --n-layer 8 --n-head 6 --n-embd 384 --block-size 96 --batch-size 32 `
+  --max-steps 2500 --lr 5e-4 --dropout 0.05
+```
+
+---
+
+## Evaluation & Open-Domain Benchmark
+
+Run the automated evaluation suite:
+```powershell
+cd keyword-stance
+python scripts/eval_open_domain.py
+```
+
+| Evaluation Suite | Metric | Result |
+|---|---|---|
+| **Exact Match** (10 topics) | Routing Accuracy | **100.0%** (<0.01 ms) |
+| **Paraphrases / Synonyms** (12 queries) | Top-1 Retrieval Accuracy | **100.0%** (mean sim: 0.33) |
+| **Paraphrases / Synonyms** | Top-3 Retrieval Accuracy | **100.0%** |
+| **Out-of-Domain Inputs** (10 queries) | Correct Uncertainty Warning Rate | **100.0%** (confidence < 0.15) |
+| **Retrieval Overhead** | Latency | **~3.9 ms** |
+
+For the complete academic analysis, empirical limits of small language models, and the scaling roadmap to multi-billion tokens, see [REPORT-OPEN-DOMAIN.md](keyword-stance/REPORT-OPEN-DOMAIN.md).
+
+---
+
+## Repository Structure
+
+```
+TwinMinds-SLM/
+├── README.md                # Project overview, setup, and results
+├── .gitignore
+└── keyword-stance/
+    ├── app.py               # FastAPI server with generative & retrieval routing
+    ├── requirements.txt     # Python dependencies
+    ├── REPORT-OPEN-DOMAIN.md# Complete course report & evaluation writeup
+    ├── web/                 # Web interface (HTML, CSS, JS, preview assets)
+    ├── src/
+    │   ├── model/gpt.py     # Decoder-only transformer from scratch
+    │   ├── train.py         # Explicit training loop (no Trainer library)
+    │   ├── generate.py      # CLI sampling
+    │   ├── retrieval.py     # T0 TF-IDF open-domain retrieval index
+    │   └── data/
+    │       ├── text.py      # Tokenizer & vocab
+    │       ├── keywords.py  # Statistical RAKE keyword extractor
+    │       ├── train_bpe.py # T1 ByteLevel BPE tokenizer trainer
+    │       └── build_*.py   # Dataset generation pipelines
+    ├── data/
+    │   └── curated/topics.jsonl # 48 curated debate topics with pro/con keywords
+    └── scripts/
+        ├── bench.py         # GPU training throughput benchmark
+        ├── test_retrieval.py# Retrieval smoke test
+        └── eval_open_domain.py # Quantitative evaluation suite
+```
