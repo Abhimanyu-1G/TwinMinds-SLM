@@ -1,0 +1,39 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Pip & package caches
+.pip-cache/
+.tmp/
+*.egg-info/
+dist/
+build/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Model weights & training outputs
+outputs/
+keyword-stance/outputs/
+*.pt
+*.bin
+*.onnx
+
+# Cache & temporary directories
+.pytest_cache/
+.edge-profile/
+*.log
+
+# Generated data (can be rebuilt with build_dataset / build_all)
+keyword-stance/data/pilot/
+keyword-stance/data/dummy/
+keyword-stance/web/dom.html
+
+# OS artifacts
+Thumbs.db
+Desktop.ini
+.DS_Store

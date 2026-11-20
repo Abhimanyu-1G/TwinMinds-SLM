@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+outputs/
+data/pilot/
+data/dummy/
+data/pro/
+data/con/
+.pytest_cache/
+.edge-profile/
+web/dom.html
